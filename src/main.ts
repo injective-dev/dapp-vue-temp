@@ -13,4 +13,13 @@ const router = createRouter({
   ],
 })
 
-createApp(App).use(router).mount('#app')
+const app = createApp(App)
+
+// Global error handler — logs component trace so we can find the real source
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue Error]', err)
+  console.error('[Component]', instance?.$options?.__name ?? 'unknown')
+  console.error('[Info]', info)
+}
+
+app.use(router).mount('#app')
