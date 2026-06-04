@@ -1,138 +1,118 @@
-import { ref, computed, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import {
-  readContract,
-  writeContract,
-  waitForTransactionReceipt,
-  getAccount,
-  watchAccount,
-} from '@wagmi/core'
+  useAccount,
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+} from '@wagmi/vue'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
-import { wagmiConfig } from '@/config/wagmi'
+import type { Address } from 'viem'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI } from '@/config/contracts'
 
-// ── Shared vault state (reactive, updated on account or tx changes) ─────────
-const usdcBalance = ref<bigint>(0n)
-const userDeposit = ref<bigint>(0n)
-const vaultBalance = ref<bigint>(0n)
-const currentAddress = ref<`0x${string}` | undefined>(undefined)
+// Always a valid address — prevents viem from crashing on address.split() when
+// wallet is not yet connected (undefined would cause the error)
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as Address
 
-async function fetchVaultBalance() {
-  try {
-    const bal = await readContract(wagmiConfig, {
-      address: CONTRACT_ADDRESSES.VAULT,
-      abi: VAULT_ABI,
-      functionName: 'getVaultBalance',
-    })
-    vaultBalance.value = bal as bigint
-  } catch { /* silent */ }
-}
-
-async function fetchUserData(addr: `0x${string}`) {
-  try {
-    const [usdc, deposit] = await Promise.all([
-      readContract(wagmiConfig, {
-        address: CONTRACT_ADDRESSES.USDC,
-        abi: ERC20_ABI,
-        functionName: 'balanceOf',
-        args: [addr],
-      }),
-      readContract(wagmiConfig, {
-        address: CONTRACT_ADDRESSES.VAULT,
-        abi: VAULT_ABI,
-        functionName: 'getUserDeposit',
-        args: [addr],
-      }),
-    ])
-    usdcBalance.value = usdc as bigint
-    userDeposit.value = deposit as bigint
-  } catch { /* silent */ }
-}
-
-// Watch account changes to refresh data
-watchAccount(wagmiConfig, {
-  onChange(acc) {
-    currentAddress.value = acc.address
-    if (acc.address) {
-      fetchUserData(acc.address)
-      fetchVaultBalance()
-    } else {
-      usdcBalance.value = 0n
-      userDeposit.value = 0n
-    }
-  },
-})
-
-// Initial load
-fetchVaultBalance()
-const initAcc = getAccount(wagmiConfig)
-if (initAcc.address) {
-  currentAddress.value = initAcc.address
-  fetchUserData(initAcc.address)
-}
-
-// ── Composable ───────────────────────────────────────────────────────────────
 export function useUSDCVault() {
+  const { address, isConnected } = useAccount()
+  const { writeContractAsync } = useWriteContract()
+
   const txHash = ref<`0x${string}` | undefined>(undefined)
   const isLoading = ref(false)
-  const isTxPending = ref(false)
-  const isTxSuccess = ref(false)
   const error = ref<string | null>(null)
 
-  const usdcBalanceFormatted = computed(() => formatUnits(usdcBalance.value, 6))
-  const userDepositFormatted = computed(() => formatUnits(userDeposit.value, 6))
-  const vaultBalanceFormatted = computed(() => formatUnits(vaultBalance.value, 6))
+  // Safe address: ALWAYS a valid hex string, never undefined
+  // viem validates args before checking enabled, so undefined crashes it
+  const safeAddr = computed<Address>(() => address.value ?? ZERO_ADDR)
 
-  async function waitAndRefresh(hash: `0x${string}`) {
-    isTxPending.value = true
-    isTxSuccess.value = false
-    try {
-      await waitForTransactionReceipt(wagmiConfig, { hash })
-      isTxSuccess.value = true
-      // Refresh all balances after confirmation
-      if (currentAddress.value) await fetchUserData(currentAddress.value)
-      await fetchVaultBalance()
-    } finally {
-      isTxPending.value = false
+  // ── Read: wallet USDC balance ──────────────────────────────────────────
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.USDC,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    get args() { return [safeAddr.value] as [Address] },
+    get query() { return { enabled: isConnected.value } },
+  })
+
+  // ── Read: USDC allowance ───────────────────────────────────────────────
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: CONTRACT_ADDRESSES.USDC,
+    abi: ERC20_ABI,
+    functionName: 'allowance',
+    get args() { return [safeAddr.value, CONTRACT_ADDRESSES.VAULT] as [Address, Address] },
+    get query() { return { enabled: isConnected.value } },
+  })
+
+  // ── Read: user deposit in vault ────────────────────────────────────────
+  const { data: userDeposit, refetch: refetchUserDeposit } = useReadContract({
+    address: CONTRACT_ADDRESSES.VAULT,
+    abi: VAULT_ABI,
+    functionName: 'getUserDeposit',
+    get args() { return [safeAddr.value] as [Address] },
+    get query() { return { enabled: isConnected.value } },
+  })
+
+  // ── Read: total vault balance (no user address needed) ─────────────────
+  const { data: vaultBalance, refetch: refetchVaultBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.VAULT,
+    abi: VAULT_ABI,
+    functionName: 'getVaultBalance',
+  })
+
+  // ── Wait for tx confirmation ───────────────────────────────────────────
+  const { isSuccess: isTxSuccess, isLoading: isTxPending } =
+    useWaitForTransactionReceipt({
+      get hash() { return txHash.value },
+    })
+
+  // ── Auto-refetch all balances after tx confirmed ───────────────────────
+  watch(isTxSuccess, (confirmed) => {
+    if (confirmed) {
+      refetchUsdcBalance()
+      refetchAllowance()
+      refetchUserDeposit()
+      refetchVaultBalance()
     }
-  }
+  })
 
+  // ── Formatters ─────────────────────────────────────────────────────────
+  const usdcBalanceFormatted = computed(() =>
+    usdcBalance.value != null ? formatUnits(usdcBalance.value as bigint, 6) : '0',
+  )
+  const userDepositFormatted = computed(() =>
+    userDeposit.value != null ? formatUnits(userDeposit.value as bigint, 6) : '0',
+  )
+  const vaultBalanceFormatted = computed(() =>
+    vaultBalance.value != null ? formatUnits(vaultBalance.value as bigint, 6) : '0',
+  )
+
+  // ── Deposit ────────────────────────────────────────────────────────────
   async function deposit(amountStr: string) {
-    const addr = currentAddress.value
-    if (!addr) return
     isLoading.value = true
     error.value = null
-    isTxSuccess.value = false
     try {
       const amount = parseUnits(amountStr, 6)
 
-      // Check allowance
-      const allowance = await readContract(wagmiConfig, {
-        address: CONTRACT_ADDRESSES.USDC,
-        abi: ERC20_ABI,
-        functionName: 'allowance',
-        args: [addr, CONTRACT_ADDRESSES.VAULT],
-      }) as bigint
-
-      // Auto-approve if needed
-      if (allowance < amount) {
-        const approveHash = await writeContract(wagmiConfig, {
+      // Auto-approve if allowance insufficient
+      if (!allowance.value || (allowance.value as bigint) < amount) {
+        const approveHash = await writeContractAsync({
           address: CONTRACT_ADDRESSES.USDC,
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [CONTRACT_ADDRESSES.VAULT, maxUint256],
         })
         txHash.value = approveHash
-        await waitForTransactionReceipt(wagmiConfig, { hash: approveHash })
+        await new Promise((r) => setTimeout(r, 2000))
+        await refetchAllowance()
       }
 
-      const hash = await writeContract(wagmiConfig, {
+      const hash = await writeContractAsync({
         address: CONTRACT_ADDRESSES.VAULT,
         abi: VAULT_ABI,
         functionName: 'deposit',
         args: [amount],
       })
       txHash.value = hash
-      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Deposit failed'
@@ -142,19 +122,18 @@ export function useUSDCVault() {
     }
   }
 
+  // ── Withdraw ───────────────────────────────────────────────────────────
   async function withdraw(amountStr: string) {
     isLoading.value = true
     error.value = null
-    isTxSuccess.value = false
     try {
-      const hash = await writeContract(wagmiConfig, {
+      const hash = await writeContractAsync({
         address: CONTRACT_ADDRESSES.VAULT,
         abi: VAULT_ABI,
         functionName: 'withdraw',
         args: [parseUnits(amountStr, 6)],
       })
       txHash.value = hash
-      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Withdrawal failed'
@@ -164,18 +143,17 @@ export function useUSDCVault() {
     }
   }
 
+  // ── Withdraw All ───────────────────────────────────────────────────────
   async function withdrawAll() {
     isLoading.value = true
     error.value = null
-    isTxSuccess.value = false
     try {
-      const hash = await writeContract(wagmiConfig, {
+      const hash = await writeContractAsync({
         address: CONTRACT_ADDRESSES.VAULT,
         abi: VAULT_ABI,
         functionName: 'withdrawAll',
       })
       txHash.value = hash
-      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Withdrawal failed'

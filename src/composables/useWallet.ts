@@ -1,76 +1,31 @@
-import { ref, computed, onUnmounted } from 'vue'
-import {
-  getAccount,
-  watchAccount,
-  getBalance,
-  connect,
-  disconnect,
-  switchChain,
-  type GetAccountReturnType,
-} from '@wagmi/core'
-import { wagmiConfig, injectiveTestnet } from '@/config/wagmi'
-
-// ── Shared reactive account state (singleton across composable calls) ──────
-const account = ref<GetAccountReturnType>(getAccount(wagmiConfig))
-const balance = ref<{ formatted: string; symbol: string } | null>(null)
-
-let watcherCount = 0
-let unwatch: (() => void) | null = null
-
-function startWatcher() {
-  if (unwatch) return
-  unwatch = watchAccount(wagmiConfig, {
-    onChange(data) {
-      account.value = data
-      if (data.address) {
-        getBalance(wagmiConfig, { address: data.address })
-          .then((b) => {
-            balance.value = { formatted: b.formatted, symbol: b.symbol }
-          })
-          .catch(() => { balance.value = null })
-      } else {
-        balance.value = null
-      }
-    },
-  })
-}
-
-function stopWatcher() {
-  if (unwatch && watcherCount <= 0) {
-    unwatch()
-    unwatch = null
-  }
-}
+import { computed } from 'vue'
+import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from '@wagmi/vue'
+import { injectiveTestnet } from '@/config/wagmi'
 
 export function useWallet() {
-  watcherCount++
-  startWatcher()
+  const { address, isConnected, isConnecting, chain } = useAccount()
+  const { connect, connectors } = useConnect()
+  const { disconnect } = useDisconnect()
+  const { switchChain } = useSwitchChain()
 
-  onUnmounted(() => {
-    watcherCount--
-    stopWatcher()
+  // useBalance: pass address as a getter so it's always reactive
+  // The query is disabled when address is undefined, so no crash
+  const { data: balance } = useBalance({
+    get address() { return address.value },
+    get query() { return { enabled: isConnected.value } },
   })
 
-  const isConnected = computed(() => account.value.isConnected)
-  const isConnecting = computed(() => account.value.isConnecting)
-  const address = computed(() => account.value.address)
-  const chain = computed(() => account.value.chain)
   const isOnCorrectNetwork = computed(
-    () => account.value.chain?.id === injectiveTestnet.id,
+    () => chain.value?.id === injectiveTestnet.id,
   )
 
-  const connectWallet = async (connectorIndex = 0) => {
-    const connectors = wagmiConfig.connectors
-    const connector = connectors[connectorIndex]
-    if (connector) await connect(wagmiConfig, { connector })
+  const connectWallet = (connectorIndex = 0) => {
+    const connector = connectors.value[connectorIndex]
+    if (connector) connect({ connector })
   }
 
-  const disconnectWallet = async () => {
-    await disconnect(wagmiConfig)
-  }
-
-  const switchToInjective = async () => {
-    await switchChain(wagmiConfig, { chainId: injectiveTestnet.id })
+  const switchToInjective = () => {
+    switchChain({ chainId: injectiveTestnet.id })
   }
 
   return {
@@ -79,9 +34,10 @@ export function useWallet() {
     isConnecting,
     chain,
     balance,
+    connectors,
     isOnCorrectNetwork,
     connectWallet,
-    disconnect: disconnectWallet,
+    disconnect,
     switchToInjective,
   }
 }

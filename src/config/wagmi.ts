@@ -1,6 +1,6 @@
-import { createConfig, http } from '@wagmi/core'
+import { createConfig, http } from '@wagmi/vue'
 import { defineChain } from 'viem'
-import { injected, metaMask } from '@wagmi/core/connectors'
+import { injected, metaMask } from '@wagmi/vue/connectors'
 
 export const injectiveTestnet = defineChain({
   id: 1439,
