@@ -1,10 +1,14 @@
 import { ref, computed, watch } from 'vue'
-import {
-  parseUnits,
-  formatUnits,
-  maxUint256,
-  encodeFunctionData,
-} from 'viem'
+import { parseUnits, formatUnits, maxUint256 } from 'viem'
+
+// Safe BigInt conversion — prevents formatUnits from crashing if RPC
+// returns an unexpected type (string instead of bigint, etc.)
+function toBigInt(val: unknown): bigint {
+  if (typeof val === 'bigint') return val
+  if (typeof val === 'string') return BigInt(val)
+  if (typeof val === 'number') return BigInt(Math.floor(val))
+  return 0n
+}
 import { publicClient } from '@/config/client'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI } from '@/config/contracts'
 import { useWallet, getWalletClient } from './useWallet'
@@ -30,7 +34,7 @@ export function useUSDCVault() {
         abi: VAULT_ABI,
         functionName: 'getVaultBalance',
       })
-      vaultBalance.value = bal as bigint
+      vaultBalance.value = toBigInt(bal)
     } catch { /* silent */ }
   }
 
@@ -50,8 +54,8 @@ export function useUSDCVault() {
           args: [addr],
         }),
       ])
-      usdcBalance.value = usdc as bigint
-      userDeposit.value = deposit as bigint
+      usdcBalance.value = toBigInt(usdc)
+      userDeposit.value = toBigInt(deposit)
     } catch { /* silent */ }
   }
 

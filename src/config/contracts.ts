@@ -1,113 +1,42 @@
+import { parseAbi } from 'viem'
+
 /**
  * Official Circle USDC on Injective EVM Testnet
  * Get testnet USDC: https://faucet.circle.com/
  */
-export const USDC_TESTNET_ADDRESS = '0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d' as const
+export const USDC_TESTNET_ADDRESS =
+  '0x0C382e685bbeeFE5d3d9C29e29E341fEE8E84C5d' as const
 
 /**
  * USDCVault — deployed on Injective EVM Testnet (Chain ID: 1439)
  * Explorer: https://testnet.blockscout.injective.network/address/0xc79efba3814eedb4b8b85651bc6668198e46ac5a
  */
 export const VAULT_ADDRESS = (
-  import.meta.env.VITE_VAULT_ADDRESS || '0xc79efba3814eedb4b8b85651bc6668198e46ac5a'
+  import.meta.env.VITE_VAULT_ADDRESS ||
+  '0xc79efba3814eedb4b8b85651bc6668198e46ac5a'
 ) as `0x${string}`
 
 export const CONTRACT_ADDRESSES = {
-  USDC: (import.meta.env.VITE_USDC_ADDRESS || USDC_TESTNET_ADDRESS) as `0x${string}`,
+  USDC: (import.meta.env.VITE_USDC_ADDRESS ||
+    USDC_TESTNET_ADDRESS) as `0x${string}`,
   VAULT: VAULT_ADDRESS,
 }
 
-export const IS_CONTRACT_CONFIGURED =
-  VAULT_ADDRESS !== '0x0000000000000000000000000000000000000000' &&
-  VAULT_ADDRESS !== ('0x' as `0x${string}`)
+// Human-readable ABI (parseAbi is viem's canonical approach — avoids
+// internal formatAbiItem quirks with manually-constructed readonly tuples)
+export const ERC20_ABI = parseAbi([
+  'function balanceOf(address account) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+])
 
-export const ERC20_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-  },
-  {
-    name: 'allowance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' },
-    ],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const
-
-export const VAULT_ABI = [
-  {
-    name: 'deposit',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'amount', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'withdraw',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'amount', type: 'uint256' }],
-    outputs: [],
-  },
-  {
-    name: 'withdrawAll',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: 'getVaultBalance',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'getUserDeposit',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'user', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'totalDeposited',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-  {
-    name: 'Deposited',
-    type: 'event',
-    inputs: [
-      { name: 'user', type: 'address', indexed: true },
-      { name: 'amount', type: 'uint256', indexed: false },
-    ],
-  },
-  {
-    name: 'Withdrawn',
-    type: 'event',
-    inputs: [
-      { name: 'user', type: 'address', indexed: true },
-      { name: 'amount', type: 'uint256', indexed: false },
-    ],
-  },
-] as const
+export const VAULT_ABI = parseAbi([
+  'function deposit(uint256 amount)',
+  'function withdraw(uint256 amount)',
+  'function withdrawAll()',
+  'function getVaultBalance() view returns (uint256)',
+  'function getUserDeposit(address user) view returns (uint256)',
+  'function totalDeposited() view returns (uint256)',
+  'event Deposited(address indexed user, uint256 amount)',
+  'event Withdrawn(address indexed user, uint256 amount)',
+])
