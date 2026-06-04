@@ -13,9 +13,9 @@ const { isConnected, address, balance } = useWallet()
     <!-- Header -->
     <header class="bg-inj-midnight/80 backdrop-blur-sm border-b border-inj-border sticky top-0 z-10">
       <div class="max-w-5xl mx-auto px-inj-lg h-16 flex items-center justify-between">
-        <RouterLink to="/"
-          class="font-marist font-bold text-inj-snow text-lg tracking-tight hover:text-inj-muted transition-colors">
-          Injective dApp
+        <RouterLink to="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <img src="/logo.jpg" alt="Logo" class="h-8 w-8 rounded-full object-cover" />
+          <span class="font-marist font-bold text-inj-snow text-lg tracking-tight">Injective dApp</span>
         </RouterLink>
         <div class="flex items-center gap-inj-sm">
           <NetworkBadge />

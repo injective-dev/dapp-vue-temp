@@ -34,9 +34,10 @@ const features = [
     <!-- Nav -->
     <nav class="border-b border-inj-border bg-inj-midnight/80 backdrop-blur-sm sticky top-0 z-10">
       <div class="max-w-5xl mx-auto px-inj-lg h-16 flex items-center justify-between">
-        <span class="font-marist font-bold text-inj-snow text-lg tracking-tight">
-          Injective dApp
-        </span>
+        <div class="flex items-center gap-2">
+          <img src="/logo.jpg" alt="Logo" class="h-8 w-8 rounded-full object-cover" />
+          <span class="font-marist font-bold text-inj-snow text-lg tracking-tight">Injective dApp</span>
+        </div>
         <ConnectWallet />
       </div>
     </nav>
@@ -44,6 +45,7 @@ const features = [
     <!-- Hero -->
     <section class="bg-gradient-to-br from-inj-midnight via-inj-dark to-inj-dark border-b border-inj-border">
       <div class="max-w-5xl mx-auto px-inj-lg py-24 md:py-32">
+        <img src="/logo.jpg" alt="Injective dApp Logo" class="h-20 w-20 rounded-2xl object-cover mb-inj-lg shadow-lg" />
         <span class="tag-builder mb-inj-lg inline-flex">⚡ Testnet Ready</span>
         <h1 class="font-marist text-display font-bold text-inj-snow leading-[1.1] mb-inj-lg max-w-2xl">
           Build on Injective.<br />Ship faster.
