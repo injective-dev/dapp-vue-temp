@@ -1,4 +1,6 @@
 <div align="center">
+  <img src="./public/logo.jpg" alt="Logo" width="120" style="border-radius:16px" />
+
   <h1>Injective dApp Vue Template</h1>
   <p>A minimal Vue 3 starter for building dApps on Injective EVM Testnet.</p>
   <p>
