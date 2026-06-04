@@ -141,7 +141,7 @@ async function handleWithdrawAll() {
           <label class="block font-whyte text-label-sm text-inj-muted mb-2">Amount (USDC)</label>
           <input
             v-model="depositAmount"
-            type="number" placeholder="0.00" min="0.01" step="0.01" required
+            type="text" inputmode="decimal" placeholder="0.00" required
             :disabled="busy" class="input-dark"
           />
           <p class="font-whyte text-label-xs text-inj-muted mt-1">
@@ -164,8 +164,7 @@ async function handleWithdrawAll() {
           <label class="block font-whyte text-label-sm text-inj-muted mb-2">Amount (USDC)</label>
           <input
             v-model="withdrawAmount"
-            type="number" placeholder="0.00" min="0.01" step="0.01"
-            :max="userDepositFormatted" required
+            type="text" inputmode="decimal" placeholder="0.00" required
             :disabled="busy" class="input-dark"
           />
           <p class="font-whyte text-label-xs text-inj-muted mt-1">

@@ -114,13 +114,15 @@ export function useUSDCVault() {
   }
 
   // ── Deposit ─────────────────────────────────────────────────────────────
-  async function deposit(amountStr: string) {
+  async function deposit(amountStr: string | number) {
     if (!address.value) return
     isLoading.value = true
     error.value = null
     isTxSuccess.value = false
     try {
-      const amount = parseUnits(amountStr, 6)
+      // Always convert to string — v-model on number inputs returns a number,
+      // but viem's parseUnits requires a string (value.split crashes on numbers)
+      const amount = parseUnits(String(amountStr), 6)
 
       // Check and auto-approve allowance
       const allowance = await publicClient.readContract({
@@ -156,14 +158,14 @@ export function useUSDCVault() {
   }
 
   // ── Withdraw ────────────────────────────────────────────────────────────
-  async function withdraw(amountStr: string) {
+  async function withdraw(amountStr: string | number) {
     isLoading.value = true
     error.value = null
     isTxSuccess.value = false
     try {
       const hash = await sendTx(
         CONTRACT_ADDRESSES.VAULT, VAULT_ABI, 'withdraw',
-        [parseUnits(amountStr, 6)],
+        [parseUnits(String(amountStr), 6)],
       )
       txHash.value = hash
       await waitAndRefresh(hash)
