@@ -5,9 +5,9 @@ import {
   maxUint256,
   encodeFunctionData,
 } from 'viem'
-import { publicClient, getWalletClient } from '@/config/client'
+import { publicClient } from '@/config/client'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI } from '@/config/contracts'
-import { useWallet } from './useWallet'
+import { useWallet, getWalletClient } from './useWallet'
 
 export function useUSDCVault() {
   const { address, isConnected } = useWallet()
