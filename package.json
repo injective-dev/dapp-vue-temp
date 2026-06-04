@@ -1,0 +1,28 @@
+{
+  "name": "injective-dapp-vue-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/vue-query": "^5.62.7",
+    "@wagmi/vue": "^0.0.54",
+    "viem": "^2.21.53",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5",
+    "wagmi": "^2.13.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vue-tsc": "^2.1.10"
+  }
+}
