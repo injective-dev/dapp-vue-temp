@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { useWallet } from '@/composables/useWallet'
 
-const { address, isConnected, isConnecting, balance, isOnCorrectNetwork, connectWallet, disconnect, switchToInjective } = useWallet()
+const {
+  address,
+  isConnected,
+  isConnecting,
+  balance,
+  isOnCorrectNetwork,
+  connectWallet,
+  disconnect,
+  switchToInjective,
+} = useWallet()
 </script>
 
 <template>
   <!-- Wrong network -->
-  <button v-if="isConnected && !isOnCorrectNetwork" @click="switchToInjective"
+  <button v-if="isConnected && !isOnCorrectNetwork"
+    @click="switchToInjective"
     class="btn-primary bg-amber-600 hover:bg-amber-500">
     Switch to Injective Testnet
   </button>
@@ -26,7 +36,9 @@ const { address, isConnected, isConnecting, balance, isOnCorrectNetwork, connect
       </span>
     </div>
     <button @click="disconnect()"
-      class="px-inj-md py-inj-sm rounded-inj-md font-marist text-sm font-medium border border-inj-border text-inj-muted hover:border-red-600/50 hover:text-red-400 transition-colors">
+      class="px-inj-md py-inj-sm rounded-inj-md font-marist text-sm font-medium
+             border border-inj-border text-inj-muted
+             hover:border-red-600/50 hover:text-red-400 transition-colors">
       Disconnect
     </button>
   </div>
