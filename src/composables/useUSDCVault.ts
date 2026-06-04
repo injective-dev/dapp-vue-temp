@@ -6,6 +6,7 @@ import {
   useWaitForTransactionReceipt,
 } from '@wagmi/vue'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
+import type { Address } from 'viem'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI } from '@/config/contracts'
 
 export function useUSDCVault() {
@@ -17,45 +18,49 @@ export function useUSDCVault() {
   const error = ref<string | null>(null)
 
   // ── Read: wallet USDC balance ────────────────────────────────────────────
-  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
-    address: CONTRACT_ADDRESSES.USDC,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: computed(() => (address.value ? [address.value] : undefined)) as any,
-    query: computed(() => ({ enabled: !!address.value })),
-  })
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract(
+    computed(() => ({
+      address: CONTRACT_ADDRESSES.USDC,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf' as const,
+      args: [address.value as Address],
+      query: { enabled: !!address.value },
+    })),
+  )
 
   // ── Read: USDC allowance ─────────────────────────────────────────────────
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: CONTRACT_ADDRESSES.USDC,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    args: computed(() =>
-      address.value ? [address.value, CONTRACT_ADDRESSES.VAULT] : undefined,
-    ) as any,
-    query: computed(() => ({ enabled: !!address.value })),
-  })
+  const { data: allowance, refetch: refetchAllowance } = useReadContract(
+    computed(() => ({
+      address: CONTRACT_ADDRESSES.USDC,
+      abi: ERC20_ABI,
+      functionName: 'allowance' as const,
+      args: [address.value as Address, CONTRACT_ADDRESSES.VAULT],
+      query: { enabled: !!address.value },
+    })),
+  )
 
   // ── Read: user deposit in vault ──────────────────────────────────────────
-  const { data: userDeposit, refetch: refetchUserDeposit } = useReadContract({
-    address: CONTRACT_ADDRESSES.VAULT,
-    abi: VAULT_ABI,
-    functionName: 'getUserDeposit',
-    args: computed(() => (address.value ? [address.value] : undefined)) as any,
-    query: computed(() => ({ enabled: !!address.value })),
-  })
+  const { data: userDeposit, refetch: refetchUserDeposit } = useReadContract(
+    computed(() => ({
+      address: CONTRACT_ADDRESSES.VAULT,
+      abi: VAULT_ABI,
+      functionName: 'getUserDeposit' as const,
+      args: [address.value as Address],
+      query: { enabled: !!address.value },
+    })),
+  )
 
-  // ── Read: total vault balance ────────────────────────────────────────────
+  // ── Read: total vault balance (no args needed) ───────────────────────────
   const { data: vaultBalance, refetch: refetchVaultBalance } = useReadContract({
     address: CONTRACT_ADDRESSES.VAULT,
     abi: VAULT_ABI,
-    functionName: 'getVaultBalance',
+    functionName: 'getVaultBalance' as const,
   })
 
   // ── Wait for tx confirmation ─────────────────────────────────────────────
-  const { isSuccess: isTxSuccess, isLoading: isTxPending } = useWaitForTransactionReceipt({
-    hash: txHash,
-  })
+  const { isSuccess: isTxSuccess, isLoading: isTxPending } = useWaitForTransactionReceipt(
+    computed(() => ({ hash: txHash.value })),
+  )
 
   // ── Auto-refetch on confirmation ─────────────────────────────────────────
   watch(isTxSuccess, (confirmed) => {
@@ -69,13 +74,13 @@ export function useUSDCVault() {
 
   // ── Formatters ───────────────────────────────────────────────────────────
   const usdcBalanceFormatted = computed(() =>
-    usdcBalance.value ? formatUnits(usdcBalance.value as bigint, 6) : '0',
+    usdcBalance.value != null ? formatUnits(usdcBalance.value as bigint, 6) : '0',
   )
   const userDepositFormatted = computed(() =>
-    userDeposit.value ? formatUnits(userDeposit.value as bigint, 6) : '0',
+    userDeposit.value != null ? formatUnits(userDeposit.value as bigint, 6) : '0',
   )
   const vaultBalanceFormatted = computed(() =>
-    vaultBalance.value ? formatUnits(vaultBalance.value as bigint, 6) : '0',
+    vaultBalance.value != null ? formatUnits(vaultBalance.value as bigint, 6) : '0',
   )
 
   // ── Deposit ──────────────────────────────────────────────────────────────
@@ -85,7 +90,7 @@ export function useUSDCVault() {
     try {
       const amount = parseUnits(amountStr, 6)
 
-      // Auto-approve if needed
+      // Auto-approve if allowance insufficient
       if (!allowance.value || (allowance.value as bigint) < amount) {
         const approveHash = await writeContractAsync({
           address: CONTRACT_ADDRESSES.USDC,
@@ -119,12 +124,11 @@ export function useUSDCVault() {
     isLoading.value = true
     error.value = null
     try {
-      const amount = parseUnits(amountStr, 6)
       const hash = await writeContractAsync({
         address: CONTRACT_ADDRESSES.VAULT,
         abi: VAULT_ABI,
         functionName: 'withdraw',
-        args: [amount],
+        args: [parseUnits(amountStr, 6)],
       })
       txHash.value = hash
       return hash
@@ -157,15 +161,12 @@ export function useUSDCVault() {
   }
 
   return {
-    // Balances
     usdcBalanceFormatted,
     userDepositFormatted,
     vaultBalanceFormatted,
-    // Actions
     deposit,
     withdraw,
     withdrawAll,
-    // Tx state
     txHash,
     isTxPending,
     isTxSuccess,

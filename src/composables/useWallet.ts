@@ -8,9 +8,12 @@ export function useWallet() {
   const { disconnect } = useDisconnect()
   const { switchChain } = useSwitchChain()
 
-  const { data: balance } = useBalance({
-    address,
-  })
+  const { data: balance } = useBalance(
+    computed(() => ({
+      address: address.value,
+      query: { enabled: !!address.value },
+    })),
+  )
 
   const isOnCorrectNetwork = computed(
     () => chain.value?.id === injectiveTestnet.id,
