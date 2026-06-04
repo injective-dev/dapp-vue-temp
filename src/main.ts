@@ -1,12 +1,8 @@
 import { createApp } from 'vue'
-import { WagmiPlugin } from '@wagmi/vue'
-import { VueQueryPlugin } from '@tanstack/vue-query'
 import { createRouter, createWebHistory } from 'vue-router'
-
 import App from './App.vue'
 import Home from './pages/Home.vue'
 import Dashboard from './pages/Dashboard.vue'
-import { wagmiConfig } from './config/wagmi'
 import './style.css'
 
 const router = createRouter({
@@ -17,8 +13,4 @@ const router = createRouter({
   ],
 })
 
-createApp(App)
-  .use(WagmiPlugin, { config: wagmiConfig })
-  .use(VueQueryPlugin, {})
-  .use(router)
-  .mount('#app')
+createApp(App).use(router).mount('#app')

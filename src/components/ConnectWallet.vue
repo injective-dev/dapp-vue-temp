@@ -26,7 +26,7 @@ const {
     <div class="flex flex-col px-inj-md py-1.5 bg-inj-navy border border-inj-border rounded-inj-md">
       <span class="font-whyte text-label-xs text-inj-muted">Balance</span>
       <span class="font-marist text-sm font-semibold text-inj-snow">
-        {{ balance ? parseFloat(balance.formatted).toFixed(4) : '0' }} INJ
+        {{ balance.value?.formatted ?? '0' }} INJ
       </span>
     </div>
     <div class="flex flex-col px-inj-md py-1.5 bg-inj-navy border border-inj-border rounded-inj-md">
@@ -44,7 +44,7 @@ const {
   </div>
 
   <!-- Not connected -->
-  <button v-else @click="connectWallet(0)" :disabled="isConnecting" class="btn-primary">
+  <button v-else @click="connectWallet" :disabled="isConnecting" class="btn-primary">
     {{ isConnecting ? 'Connecting…' : 'Connect Wallet' }}
   </button>
 </template>

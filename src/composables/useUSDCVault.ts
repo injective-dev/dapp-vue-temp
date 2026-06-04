@@ -1,118 +1,147 @@
-import { ref, watch, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
-  useAccount,
-  useReadContract,
-  useWriteContract,
-  useWaitForTransactionReceipt,
-} from '@wagmi/vue'
-import { parseUnits, formatUnits, maxUint256 } from 'viem'
-import type { Address } from 'viem'
+  parseUnits,
+  formatUnits,
+  maxUint256,
+  encodeFunctionData,
+} from 'viem'
+import { publicClient, getWalletClient } from '@/config/client'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI } from '@/config/contracts'
-
-// Always a valid address — prevents viem from crashing on address.split() when
-// wallet is not yet connected (undefined would cause the error)
-const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as Address
+import { useWallet } from './useWallet'
 
 export function useUSDCVault() {
-  const { address, isConnected } = useAccount()
-  const { writeContractAsync } = useWriteContract()
+  const { address, isConnected } = useWallet()
 
-  const txHash = ref<`0x${string}` | undefined>(undefined)
+  const usdcBalance = ref(0n)
+  const userDeposit = ref(0n)
+  const vaultBalance = ref(0n)
+
+  const txHash = ref<`0x${string}` | undefined>()
   const isLoading = ref(false)
+  const isTxPending = ref(false)
+  const isTxSuccess = ref(false)
   const error = ref<string | null>(null)
 
-  // Safe address: ALWAYS a valid hex string, never undefined
-  // viem validates args before checking enabled, so undefined crashes it
-  const safeAddr = computed<Address>(() => address.value ?? ZERO_ADDR)
+  // ── Fetch all balances ──────────────────────────────────────────────────
+  async function fetchVaultBalance() {
+    try {
+      const bal = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.VAULT,
+        abi: VAULT_ABI,
+        functionName: 'getVaultBalance',
+      })
+      vaultBalance.value = bal as bigint
+    } catch { /* silent */ }
+  }
 
-  // ── Read: wallet USDC balance ──────────────────────────────────────────
-  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
-    address: CONTRACT_ADDRESSES.USDC,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    get args() { return [safeAddr.value] as [Address] },
-    get query() { return { enabled: isConnected.value } },
-  })
+  async function fetchUserBalances(addr: `0x${string}`) {
+    try {
+      const [usdc, deposit] = await Promise.all([
+        publicClient.readContract({
+          address: CONTRACT_ADDRESSES.USDC,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [addr],
+        }),
+        publicClient.readContract({
+          address: CONTRACT_ADDRESSES.VAULT,
+          abi: VAULT_ABI,
+          functionName: 'getUserDeposit',
+          args: [addr],
+        }),
+      ])
+      usdcBalance.value = usdc as bigint
+      userDeposit.value = deposit as bigint
+    } catch { /* silent */ }
+  }
 
-  // ── Read: USDC allowance ───────────────────────────────────────────────
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: CONTRACT_ADDRESSES.USDC,
-    abi: ERC20_ABI,
-    functionName: 'allowance',
-    get args() { return [safeAddr.value, CONTRACT_ADDRESSES.VAULT] as [Address, Address] },
-    get query() { return { enabled: isConnected.value } },
-  })
+  async function refetchAll() {
+    await fetchVaultBalance()
+    if (address.value) await fetchUserBalances(address.value)
+  }
 
-  // ── Read: user deposit in vault ────────────────────────────────────────
-  const { data: userDeposit, refetch: refetchUserDeposit } = useReadContract({
-    address: CONTRACT_ADDRESSES.VAULT,
-    abi: VAULT_ABI,
-    functionName: 'getUserDeposit',
-    get args() { return [safeAddr.value] as [Address] },
-    get query() { return { enabled: isConnected.value } },
-  })
-
-  // ── Read: total vault balance (no user address needed) ─────────────────
-  const { data: vaultBalance, refetch: refetchVaultBalance } = useReadContract({
-    address: CONTRACT_ADDRESSES.VAULT,
-    abi: VAULT_ABI,
-    functionName: 'getVaultBalance',
-  })
-
-  // ── Wait for tx confirmation ───────────────────────────────────────────
-  const { isSuccess: isTxSuccess, isLoading: isTxPending } =
-    useWaitForTransactionReceipt({
-      get hash() { return txHash.value },
-    })
-
-  // ── Auto-refetch all balances after tx confirmed ───────────────────────
-  watch(isTxSuccess, (confirmed) => {
-    if (confirmed) {
-      refetchUsdcBalance()
-      refetchAllowance()
-      refetchUserDeposit()
-      refetchVaultBalance()
+  // Auto-fetch when wallet connects or changes
+  watch(address, (addr) => {
+    if (addr) {
+      fetchUserBalances(addr)
+      fetchVaultBalance()
+    } else {
+      usdcBalance.value = 0n
+      userDeposit.value = 0n
     }
-  })
+  }, { immediate: true })
 
-  // ── Formatters ─────────────────────────────────────────────────────────
-  const usdcBalanceFormatted = computed(() =>
-    usdcBalance.value != null ? formatUnits(usdcBalance.value as bigint, 6) : '0',
-  )
-  const userDepositFormatted = computed(() =>
-    userDeposit.value != null ? formatUnits(userDeposit.value as bigint, 6) : '0',
-  )
-  const vaultBalanceFormatted = computed(() =>
-    vaultBalance.value != null ? formatUnits(vaultBalance.value as bigint, 6) : '0',
-  )
+  // Also fetch vault balance on mount even before wallet connects
+  fetchVaultBalance()
 
-  // ── Deposit ────────────────────────────────────────────────────────────
+  // ── Send tx helper ──────────────────────────────────────────────────────
+  async function sendTx(
+    contractAddress: `0x${string}`,
+    abi: any,
+    functionName: string,
+    args?: any[],
+  ): Promise<`0x${string}`> {
+    const wallet = getWalletClient()
+    const [account] = await wallet.getAddresses()
+
+    const hash = await wallet.writeContract({
+      address: contractAddress,
+      abi,
+      functionName,
+      args,
+      account,
+      chain: null, // use already-connected chain
+    } as any)
+
+    return hash
+  }
+
+  // ── Wait for confirmation + refresh ────────────────────────────────────
+  async function waitAndRefresh(hash: `0x${string}`) {
+    isTxPending.value = true
+    isTxSuccess.value = false
+    try {
+      await publicClient.waitForTransactionReceipt({ hash })
+      isTxSuccess.value = true
+      await refetchAll()
+    } finally {
+      isTxPending.value = false
+    }
+  }
+
+  // ── Deposit ─────────────────────────────────────────────────────────────
   async function deposit(amountStr: string) {
+    if (!address.value) return
     isLoading.value = true
     error.value = null
+    isTxSuccess.value = false
     try {
       const amount = parseUnits(amountStr, 6)
 
-      // Auto-approve if allowance insufficient
-      if (!allowance.value || (allowance.value as bigint) < amount) {
-        const approveHash = await writeContractAsync({
-          address: CONTRACT_ADDRESSES.USDC,
-          abi: ERC20_ABI,
-          functionName: 'approve',
-          args: [CONTRACT_ADDRESSES.VAULT, maxUint256],
-        })
+      // Check and auto-approve allowance
+      const allowance = await publicClient.readContract({
+        address: CONTRACT_ADDRESSES.USDC,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [address.value, CONTRACT_ADDRESSES.VAULT],
+      }) as bigint
+
+      if (allowance < amount) {
+        const approveHash = await sendTx(
+          CONTRACT_ADDRESSES.USDC, ERC20_ABI, 'approve',
+          [CONTRACT_ADDRESSES.VAULT, maxUint256],
+        )
         txHash.value = approveHash
-        await new Promise((r) => setTimeout(r, 2000))
-        await refetchAllowance()
+        isTxPending.value = true
+        await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        isTxPending.value = false
       }
 
-      const hash = await writeContractAsync({
-        address: CONTRACT_ADDRESSES.VAULT,
-        abi: VAULT_ABI,
-        functionName: 'deposit',
-        args: [amount],
-      })
+      const hash = await sendTx(
+        CONTRACT_ADDRESSES.VAULT, VAULT_ABI, 'deposit', [amount],
+      )
       txHash.value = hash
+      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Deposit failed'
@@ -122,18 +151,18 @@ export function useUSDCVault() {
     }
   }
 
-  // ── Withdraw ───────────────────────────────────────────────────────────
+  // ── Withdraw ────────────────────────────────────────────────────────────
   async function withdraw(amountStr: string) {
     isLoading.value = true
     error.value = null
+    isTxSuccess.value = false
     try {
-      const hash = await writeContractAsync({
-        address: CONTRACT_ADDRESSES.VAULT,
-        abi: VAULT_ABI,
-        functionName: 'withdraw',
-        args: [parseUnits(amountStr, 6)],
-      })
+      const hash = await sendTx(
+        CONTRACT_ADDRESSES.VAULT, VAULT_ABI, 'withdraw',
+        [parseUnits(amountStr, 6)],
+      )
       txHash.value = hash
+      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Withdrawal failed'
@@ -143,17 +172,17 @@ export function useUSDCVault() {
     }
   }
 
-  // ── Withdraw All ───────────────────────────────────────────────────────
+  // ── Withdraw All ────────────────────────────────────────────────────────
   async function withdrawAll() {
     isLoading.value = true
     error.value = null
+    isTxSuccess.value = false
     try {
-      const hash = await writeContractAsync({
-        address: CONTRACT_ADDRESSES.VAULT,
-        abi: VAULT_ABI,
-        functionName: 'withdrawAll',
-      })
+      const hash = await sendTx(
+        CONTRACT_ADDRESSES.VAULT, VAULT_ABI, 'withdrawAll',
+      )
       txHash.value = hash
+      await waitAndRefresh(hash)
       return hash
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Withdrawal failed'
@@ -164,9 +193,9 @@ export function useUSDCVault() {
   }
 
   return {
-    usdcBalanceFormatted,
-    userDepositFormatted,
-    vaultBalanceFormatted,
+    usdcBalanceFormatted: computed(() => formatUnits(usdcBalance.value, 6)),
+    userDepositFormatted: computed(() => formatUnits(userDeposit.value, 6)),
+    vaultBalanceFormatted: computed(() => formatUnits(vaultBalance.value, 6)),
     deposit,
     withdraw,
     withdrawAll,
